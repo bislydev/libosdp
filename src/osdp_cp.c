@@ -753,6 +753,7 @@ static void cp_flush_command_queue(struct osdp_pd *pd)
 static inline void cp_set_state(struct osdp_pd *pd, enum osdp_cp_state_e state)
 {
 	pd->state = state;
+	LOG_DBG("SET_STATE: %s(%02x)", osdp_cp_state_name(pd->state), pd->state);
 	CLEAR_FLAG(pd, PD_FLAG_AWAIT_RESP);
 }
 
@@ -767,6 +768,7 @@ static inline void cp_set_offline(struct osdp_pd *pd)
 {
 	sc_deactivate(pd);
 	pd->state = OSDP_CP_STATE_OFFLINE;
+	LOG_DBG("SET_STATE: %s(%02x)", osdp_cp_state_name(pd->state), pd->state);
 	pd->tstamp = osdp_millis_now();
 	if (pd->wait_ms == 0) {
 		pd->wait_ms = 1000; /* retry after 1 second initially */
@@ -854,8 +856,8 @@ static int cp_phy_state_update(struct osdp_pd *pd)
 		if (rc == OSDP_CP_ERR_GENERIC || rc == OSDP_CP_ERR_UNKNOWN ||
 		    osdp_millis_since(pd->phy_tstamp) > OSDP_RESP_TOUT_MS) {
 			if (rc != OSDP_CP_ERR_GENERIC) {
-				LOG_ERR("Response timeout for CMD(%02x)",
-					pd->cmd_id);
+				LOG_ERR("Response timeout for %s(%02x)",
+					osdp_cmd_name(pd->cmd_id), pd->cmd_id);
 			}
 			osdp_phy_state_reset(pd, false);
 			cp_flush_command_queue(pd);

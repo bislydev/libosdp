@@ -193,15 +193,15 @@ enum osdp_cp_phy_state_e {
 };
 
 enum osdp_cp_state_e {
-	OSDP_CP_STATE_INIT,
-	OSDP_CP_STATE_IDREQ,
-	OSDP_CP_STATE_CAPDET,
-	OSDP_CP_STATE_SC_INIT,
-	OSDP_CP_STATE_SC_CHLNG,
-	OSDP_CP_STATE_SC_SCRYPT,
-	OSDP_CP_STATE_SET_SCBK,
-	OSDP_CP_STATE_ONLINE,
-	OSDP_CP_STATE_OFFLINE
+	OSDP_CP_STATE_INIT = 0,
+	OSDP_CP_STATE_IDREQ = 1,
+	OSDP_CP_STATE_CAPDET = 2,
+	OSDP_CP_STATE_SC_INIT = 3,
+	OSDP_CP_STATE_SC_CHLNG = 4,
+	OSDP_CP_STATE_SC_SCRYPT = 5,
+	OSDP_CP_STATE_SET_SCBK = 6,
+	OSDP_CP_STATE_ONLINE = 7,
+	OSDP_CP_STATE_OFFLINE = 8,
 };
 
 enum osdp_pkt_errors_e {
@@ -375,6 +375,7 @@ void osdp_log(int log_level, const char *fmt, ...);
 void osdp_log_ctx_reset();
 void osdp_log_ctx_restore();
 
+const char *osdp_cp_state_name(int state_id);
 const char *osdp_cmd_name(int cmd_id);
 const char *osdp_reply_name(int reply_id);
 
