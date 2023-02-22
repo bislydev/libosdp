@@ -48,6 +48,31 @@ int64_t osdp_millis_since(int64_t last)
 	return osdp_millis_now() - last;
 }
 
+const char *osdp_cp_state_name(int state_id)
+{
+	const char *name;
+	static const char * const names[] = {
+		[OSDP_CP_STATE_INIT         - OSDP_CP_STATE_INIT] = "INIT",
+		[OSDP_CP_STATE_IDREQ        - OSDP_CP_STATE_INIT] = "IDREQ",
+		[OSDP_CP_STATE_CAPDET       - OSDP_CP_STATE_INIT] = "CAPDET",
+		[OSDP_CP_STATE_SC_INIT      - OSDP_CP_STATE_INIT] = "SC_INIT",
+		[OSDP_CP_STATE_SC_CHLNG     - OSDP_CP_STATE_INIT] = "SC_CHLNG",
+		[OSDP_CP_STATE_SC_SCRYPT    - OSDP_CP_STATE_INIT] = "SC_SCRYPT",
+		[OSDP_CP_STATE_SET_SCBK     - OSDP_CP_STATE_INIT] = "SET_SCBK",
+		[OSDP_CP_STATE_ONLINE       - OSDP_CP_STATE_INIT] = "ONLINE",
+		[OSDP_CP_STATE_OFFLINE      - OSDP_CP_STATE_INIT] = "OFFLINE",
+	};
+
+	if (state_id < OSDP_CP_STATE_INIT || state_id > OSDP_CP_STATE_OFFLINE) {
+		return "INVALID";
+	}
+	name = names[state_id - OSDP_CP_STATE_INIT];
+	if (name[0] == '\0') {
+		return "UNKNOWN";
+	}
+	return name;
+}
+
 const char *osdp_cmd_name(int cmd_id)
 {
 	const char *name;
