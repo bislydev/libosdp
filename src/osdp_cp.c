@@ -771,9 +771,9 @@ static inline void cp_set_offline(struct osdp_pd *pd)
 	LOG_DBG("SET_STATE: %s(%02x)", osdp_cp_state_name(pd->state), pd->state);
 	pd->tstamp = osdp_millis_now();
 	if (pd->wait_ms == 0) {
-		pd->wait_ms = 1000; /* retry after 1 second initially */
+		pd->wait_ms = 50; /* retry after 50ms initially */
 	} else {
-		pd->wait_ms <<= 1;
+		pd->wait_ms += 400;
 		if (pd->wait_ms > OSDP_ONLINE_RETRY_WAIT_MAX_MS) {
 			pd->wait_ms = OSDP_ONLINE_RETRY_WAIT_MAX_MS;
 		}
@@ -834,6 +834,7 @@ static int cp_phy_state_update(struct osdp_pd *pd)
 							       pd->cmd_id);
 			}
 			if (sc_is_active(pd)) {
+				// pd->ping_tstamp = osdp_millis_now();
 				pd->sc_tstamp = osdp_millis_now();
 			}
 			pd->phy_state = OSDP_CP_PHY_STATE_IDLE;
@@ -856,8 +857,18 @@ static int cp_phy_state_update(struct osdp_pd *pd)
 		if (rc == OSDP_CP_ERR_GENERIC || rc == OSDP_CP_ERR_UNKNOWN ||
 		    osdp_millis_since(pd->phy_tstamp) > OSDP_RESP_TOUT_MS) {
 			if (rc != OSDP_CP_ERR_GENERIC) {
-				LOG_ERR("Response timeout for %s(%02x)",
-					osdp_cmd_name(pd->cmd_id), pd->cmd_id);
+				if (rc == OSDP_CP_ERR_UNKNOWN) {
+					LOG_ERR("Unknown error reply for %s(%02x)",
+						osdp_cmd_name(pd->cmd_id), pd->cmd_id);
+				} else {
+					LOG_ERR("Response timeout for %s(%02x)",
+						osdp_cmd_name(pd->cmd_id), pd->cmd_id);
+					// if (pd->cmd_id == CMD_POLL && sc_is_active(pd) &&
+					//     osdp_millis_since(pd->ping_tstamp) < 1500) {
+					// 	pd->phy_state = OSDP_CP_PHY_STATE_IDLE;
+					// 	break;
+					// }
+				}
 			}
 			osdp_phy_state_reset(pd, false);
 			cp_flush_command_queue(pd);
