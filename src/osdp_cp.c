@@ -1227,6 +1227,7 @@ static struct osdp *__cp_setup(int num_pd, osdp_pd_info_t *info_list,
 	struct osdp *ctx;
 	osdp_pd_info_t *info;
 
+	LOG_CLEAR_PREFIX();
 	ctx = calloc(1, sizeof(struct osdp));
 	if (ctx == NULL) {
 		LOG_PRINT("Failed to allocate osdp context");
