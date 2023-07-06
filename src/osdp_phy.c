@@ -525,7 +525,17 @@ int osdp_phy_check_packet(struct osdp_pd *pd)
 		}
 	}
 
-	return phy_check_packet(pd, pd->packet_buf, pd->packet_len);
+	int check_packet_res = phy_check_packet(pd, pd->packet_buf, pd->packet_len);
+	// If last dev recv timed out, next could recv its packet,
+	// if we only check one pkt per recv, this can form a chain
+	// that a device always recvs the last devs packet and all
+	// devs are offline. Ingore the first pkt if it has wrong addr
+	if (check_packet_res == OSDP_ERR_PKT_CHECK) {
+		osdp_phy_state_reset(pd, false);
+		return osdp_phy_check_packet(pd);
+	} else {
+		return check_packet_res;
+	}
 }
 
 int osdp_phy_decode_packet(struct osdp_pd *pd, uint8_t **pkt_start)
