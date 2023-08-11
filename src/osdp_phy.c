@@ -464,6 +464,9 @@ static int phy_check_packet(struct osdp_pd *pd, uint8_t *buf, int pkt_len)
 	cur = osdp_phy_get_seq_number(pd, is_pd_mode(pd));
 	if (cur != comp && !ISSET_FLAG(pd, PD_FLAG_SKIP_SEQ_CHECK)) {
 		LOG_ERR("packet seq mismatch %d/%d", cur, comp);
+		if (is_cp_mode(pd) && cur == 0) {
+			return OSDP_ERR_PKT_CHECK;
+		}
 		pd->reply_id = REPLY_NAK;
 		pd->ephemeral_data[0] = OSDP_PD_NAK_SEQ_NUM;
 		return OSDP_ERR_PKT_NACK;
@@ -531,7 +534,11 @@ int osdp_phy_check_packet(struct osdp_pd *pd)
 	// if we only check one pkt per recv, this can form a chain
 	// that a device always recvs the last devs packet and all
 	// devs are offline. Ingore the first pkt if it has wrong addr
+	// Problems can also occur when only 1 device is on bus and
+	// you send next message before last response is received.
+	// In that case seq numbers will not match.
 	if (check_packet_res == OSDP_ERR_PKT_CHECK) {
+		LOG_WRN("BISLY HACK: reset phy state because phy_check_packet returned OSDP_ERR_PKT_CHECK");
 		osdp_phy_state_reset(pd, false);
 		return osdp_phy_check_packet(pd);
 	} else {
