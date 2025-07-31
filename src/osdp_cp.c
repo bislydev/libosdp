@@ -1192,7 +1192,7 @@ static inline enum osdp_cp_state_e get_next_state(struct osdp_pd *pd, int err)
 static void cp_state_change(struct osdp_pd *pd, enum osdp_cp_state_e next)
 {
 	enum osdp_cp_state_e cur = pd->state;
-
+	int time_offset = ((rand() % 10) * 100) * (rand() % 2 - 1);
 	switch (next) {
 	case OSDP_CP_STATE_INIT:
 		osdp_phy_state_reset(pd, true);
@@ -1203,11 +1203,11 @@ static void cp_state_change(struct osdp_pd *pd, enum osdp_cp_state_e next)
 		break;
 	case OSDP_CP_STATE_OFFLINE:
 		pd->tstamp = osdp_millis_now();
-		pd->wait_ms = OSDP_ONLINE_RETRY_WAIT_MAX_MS;
+		pd->wait_ms = OSDP_ONLINE_RETRY_WAIT_MAX_MS + time_offset;
 		sc_deactivate(pd);
 		notify_sc_status(pd);
-		LOG_ERR("Going offline for %d seconds; Was in '%s' state",
-			pd->wait_ms / 1000, state_get_name(cur));
+		LOG_ERR("Going offline for %d milliseconds; Was in '%s' state",
+			pd->wait_ms, state_get_name(cur));
 		notify_pd_status(pd, false);
 		break;
 	case OSDP_CP_STATE_SC_CHLNG:
