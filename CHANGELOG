@@ -1,3 +1,16 @@
+v3.2.8
+------
+
+25 October 2026
+
+A release to migrate docs to new doc.osdp.dev builder so we can build multi
+version doc site.
+
+Enhancements:
+  - doc: Add the doc.osdp.dev content tree
+  - doc: Deprecate in-tree doc site builds
+
+
 v3.2.7
 ------
 
