@@ -55,15 +55,17 @@ pd_cap = PDCapabilities([
 ## Create a PD device and kick-off the handler thread
 pd = PeripheralDevice(pd_info, pd_cap, log_level=args.log_level)
 pd.start()
-pd.sc_wait(timeout=-1)
+while not exit_event and not pd.sc_wait():
+    pass
 
-## create a card read event to be used later
+## create a card read event (a 26-bit Wiegand credential) to be used later
 card_event = {
     'event': Event.CardRead,
-    'reader_no': 1,
-    'direction': 1,
-    'format': CardFormat.ASCII,
-    'data': bytes([9,1,9,2,6,3,1,7,7,0]),
+    'reader_no': 0,
+    'direction': 0,
+    'format': CardFormat.Wiegand,
+    'length': 26,
+    'data': bytes([0x5a, 0x3c, 0x81, 0x40]),
 }
 
 while not exit_event:

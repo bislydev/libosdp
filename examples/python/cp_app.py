@@ -47,7 +47,7 @@ led_cmd = {
     'command': Command.LED,
     'reader': 1,
     'led_number': 0,
-    'control_code': 1,
+    'control_code': 2, # temporary: set this state and start the timer
     'on_count': 10,
     'off_count': 10,
     'on_color': CommandLEDColor.Red,

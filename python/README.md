@@ -59,7 +59,7 @@ while True:
         print(f"CP: Received event {event}")
 
     # Send LED command to PD-0
-    cp.send_command(pd_info[0].address, led_cmd)
+    cp.submit_command(pd_info[0].address, led_cmd)
 ```
 
 see [examples/cp_app.py][2] for more details.
@@ -85,8 +85,11 @@ channel = SerialChannel("/dev/ttyUSB0")
 # Describe the PD (setting scbk=None puts the PD in install mode)
 pd_info = PDInfo(101, channel, scbk=None)
 
-# Indicate the PD's capabilities to LibOSDP.
-pd_cap = PDCapabilities()
+# Indicate the PD's capabilities to LibOSDP; it NAKs commands for anything
+# not declared here.
+pd_cap = PDCapabilities([
+    (Capability.LEDControl, 2, 1),
+])
 
 # Create a PD device and kick-off the handler thread and wait till a secure
 # channel is established.
@@ -97,7 +100,7 @@ pd.sc_wait()
 while True:
     # Send a card read event to CP
     card_event = { ... }
-    pd.notify_event(card_event)
+    pd.submit_event(card_event)
 
     # Check if we have any commands from the CP
     cmd = pd.get_command()
@@ -119,5 +122,9 @@ def on_event_complete(event, status):
 pd.set_event_completion_handler(on_event_complete)
 ```
 
-[2]: https://github.com/osdp-dev/libosdp/blob/master/examples/python/cp_app.py
-[3]: https://github.com/osdp-dev/libosdp/blob/master/examples/python/pd_app.py
+The Python API is documented at https://doc.osdp.dev/python/getting-started;
+pick v3.2 in the version picker there for the 3.2 releases, including every
+command and event dict.
+
+[2]: https://github.com/osdp-dev/libosdp/blob/release_v3.2/examples/python/cp_app.py
+[3]: https://github.com/osdp-dev/libosdp/blob/release_v3.2/examples/python/pd_app.py
