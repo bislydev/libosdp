@@ -55,6 +55,22 @@
       ]
     },
     {
+      "text": "Python",
+      "href": "/python/",
+      "indexTitle": "Python Bindings",
+      "summary": "Use LibOSDP 3.2 from Python — installation, the ControlPanel and PeripheralDevice classes, and the command and event dicts.",
+      "intro": "The Python bindings wrap the LibOSDP C library so you can build control panel and peripheral device applications without writing C. In the 3.2 releases commands and events are plain dicts and their constants come from osdp.constants. Start with getting started for installation and a minimal example, then use the commands and events pages for every dict key and the API reference for the supporting classes.",
+      "items": [
+        { "text": "Getting Started", "href": "/python/getting-started", "source": "python/getting-started.md" },
+        { "text": "Build and Install", "href": "/python/build-and-install", "source": "python/build-and-install.md" },
+        { "text": "Control Panel", "href": "/python/control-panel", "source": "python/control-panel.md" },
+        { "text": "Peripheral Device", "href": "/python/peripheral-device", "source": "python/peripheral-device.md" },
+        { "text": "Commands", "href": "/python/commands", "source": "python/commands.md" },
+        { "text": "Events", "href": "/python/events", "source": "python/events.md" },
+        { "text": "API Reference", "href": "/python/api", "source": "python/api.md" }
+      ]
+    },
+    {
       "text": "osdpctl",
       "href": "/osdpctl/",
       "indexTitle": "osdpctl Tool",

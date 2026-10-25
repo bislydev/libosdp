@@ -1,5 +1,5 @@
 ---
-lastUpdated: 2026-10-24
+lastUpdated: 2026-10-25
 title: LibOSDP
 description: A cross-platform C library implementing IEC 60839-11-5 OSDP — secure, non-blocking, and dependency-free.
 ---
@@ -40,7 +40,7 @@ Devices, and ships with Rust, Python, and C++ bindings over the core C library.
 
 ## Getting Started
 
-See [Build and Install](/libosdp/build-and-install) to build the library, then jump to the [C API Reference](/api/control-panel) — or the [Python bindings](https://github.com/osdp-dev/libosdp/blob/release_v3.2/python/README.md) — to start integrating.
+See [Build and Install](/libosdp/build-and-install) to build the library, then jump to the [C API Reference](/api/control-panel) — or the [Python bindings](/python/getting-started) — to start integrating.
 
 Running into trouble or planning a deployment? The [debugging guide](/libosdp/debugging) covers logs and packet traces, the [compatibility list](/libosdp/compatibility) shows which devices interoperate, and the [protocol FAQ](/protocol/faq) answers common questions.
 
