@@ -1,3 +1,221 @@
+v3.2.9
+------
+
+25 October 2026
+
+A point release for python docs and examples fixes
+
+Enhancements:
+  - doc: Add the Python bindings pages for 3.2
+
+Fixes:
+  - examples: Fix the Python CP and PD apps
+
+
+v3.2.8
+------
+
+25 October 2026
+
+A release to migrate docs to new doc.osdp.dev builder so we can build multi
+version doc site.
+
+Enhancements:
+  - doc: Add the doc.osdp.dev content tree
+  - doc: Deprecate in-tree doc site builds
+
+
+v3.2.7
+------
+
+25 August 2026
+
+Point release to fix a heap-overflow and other fixes
+
+Fixes:
+  - phy: Count the mark byte against the packet buffer bound
+  - ci: Publish to PlatformIO off the tag push
+  - cp: Handle OSDP_ERR_PKT_SKIP in cp_process_reply
+  - phy: Skip packets that don't belong to current context
+  - phy: Drain software rx ring on error-path state reset
+  - CP: Don't update sequence number on command retry probes
+
+
+v3.2.6
+------
+
+04 August 2026
+
+A patch release with backports and corections from master
+
+Fixes:
+  - Migrate goToMain references to osdp-dev org
+  - Avoid int promotion overflow when shifting wire bytes
+  - Fixed format string mismatch in osdp_diag.c: %d used for size_t argument #283
+  - PD: Fix bug in pd_cap check path which always ACKs
+
+
+v3.2.5
+------
+
+10 July 2026
+
+Re-release v.3.2.4 to fix python publishing
+
+Fixes:
+  - ci: Publish PyPI from tag push, not workflow_run
+
+
+v3.2.4
+------
+
+10 July 2026
+
+Security and stability fixes.
+
+Fixes:
+  - file: Fix another instance of runtime check placed as assert
+  - file: Fix OOB read due to critical check placed as assert
+  - cp: Fix OOB write in cp_decode_response REPLY_KEYPAD/RAW
+  - phy: Guard packet length subtraction against underflow
+  - phy: Fix framer wedge on fragmented packet header
+  - python: Drop Python 3.9 from wheel builds
+
+
+v3.2.3
+------
+
+09 July 2026
+
+Point release for python users
+
+Fixes:
+  - fix(python): build wheels on Python < 3.12
+  - python: Clear stale AttributeError from optional channel "id" lookup
+
+
+v3.2.2
+------
+
+09 June 2026
+
+Point release for Apache Mynewt platform support
+
+Fixes:
+  - Update cibuildwheel version to 3.4.0
+  - Fix test build failure on windows platforms
+  - Enable MSVC's conformwat /Zc:preprocessor
+  - utils: Bump submodule pointer for Apache Mynewt fix
+  - API: Undefine API_DEPRECATED to fix macos build issue
+
+
+v3.2.1
+------
+
+19 March 2026
+
+A point release to fix rust builds
+
+Fixes:
+  - utils: Bump submodule to pull in fix for slab_t packing issue
+
+
+v3.2.0
+------
+
+16 March 2026
+
+This marks the last release for v3 of LibOSDP as v4 will break a few API to switch
+to a new "one channel per osdp_t" data model.
+
+Enhancements:
+  - Python: Enable support for app owned queue data
+  - API: Add app-owned queue mode with completion callbacks
+  - Add some quality of life improvements for Zephyr
+  - chore: Add macro guards around config.h.in entries
+  - Add python support for zero-coppy and add a pytest
+  - API: Add support for a new zero-copy RX path
+  - allow REPLAY_OSTATR as reply for CMD_OUT
+  - Add helper methods to read/write from buffers
+  - cp: Remove unused flag PD_FLAG_HAS_SCBK
+  - LibOSDP: Decouple OSDP_FLAG_XXX and PD_FLAG_XXX
+  - Add static inline helpers for various OSDP_FLAG_* macros
+  - API: Reorder attribute macros for Clang compatibility
+  - PD: Add internal command validation
+
+Fixes:
+  - Fix build git version tags
+  - tests: Fix broken command unit tests
+  - Fix docs build
+  - test: Fix failure due to capabilities
+  - tests: Fix warning about unused functions
+  - python: Fix deadlocks by using with statement in locks
+  - pyosdp: Fix error propagation to help debugging
+  - fixup! Initialize command and event structs before the are used
+  - Initialize command and event structs before the are used
+  - pyosdp: Fix status command event and struct builders
+  - fix Stat Decode error in file transfer keep alive mode
+  - Avoid unused variable warnings in case __ASSERT evaluates to NOP.
+  - PD: Fix warning about unhandled cases in validate_command
+  - CP: Fix un‑annotated fall‑through in notify_command_status
+  - fixup! PD: Add internal command validation
+  - CP: Fix bug in sequence number progression
+  - PD: Fix non-compliant REPLY_RMAC_I status byte
+  - Remove redundant pd->reply_id sets and add missing javadoc entry
+
+
+v3.1.0
+------
+
+25 September 2025
+
+This release introduces hotplug support, adaptive CRC handling, improved
+sequnce number handling, and several CP/PD enhancements. It also includes
+critical bug fixes for MFG commands, memory leaks (python), and protocol
+stability.
+
+Enhancements:
+  - API: Add support for PD hot-plug/unplug
+  - unit-tests: Add coverage for commands and events
+  - tests: Fix and enhance Python OSDP test infrastructure
+  - unit-tests: Add CP/PD startup time fuzzers
+  - CP: Improve sequence number NAK handling and recovery
+  - unit-tests: Add more phy layer tests
+  - CP: Add adaptive checksum/CRC-16 support with automatic fallback
+  - CI: Add support for more python platforms
+  - API: provide export macros locally
+  - Add initial support to build LibOSDP as a Zephyr module
+  - cmake: Add option to enable bare metal builds
+  - cmake: Rename CONFIG_XXX with OPT_XXX
+  - cp: Reset retry_count when PD responds
+  - pd: Add missing call to osdp_sc_init()
+  - API: Rename cp_send_command and pd_notify_event
+  - API: Add channel close callback
+  - API: CP: Add support for command broadcast
+  - CP: Extend debug logging for events
+  - API: PD: Add new COMESET_DONE command
+  - API: Extend PD status report mask to byte array
+  - API: Deprecate OSDP_CARD_FMT_ASCII
+  - API: Add new PD capabilities introduced in OSDP v2.2
+  - API: Add support to include PDs after osdp_cp_setup
+
+Fixes:
+  - MFG: remove command field on OSDP 2.2
+  - Fix manufacturer command callback return value handling
+  - python: Fix a plethora of memory leaks and other issues
+  - Fix Wireshark Lua dissector issue on newer Lua versions
+  - PD: Initialize event objects to prevent undefined behavior
+  - pd: Fix bug in MFGREP events from application
+  - build: Fix breakage due to CRC16 re-org
+  - Fix platformio CP example
+  - Phy: Fix packet header scan
+  - pytest: skip broken test test_command_status()
+  - PD: Fix some random cases where pd->reply_id could be invlaid
+  - pd: Fix do_command_complete callback handling
+  - crypto/tinyaes: Typecast RAND_MAX to float to fix warning
+  - fix offline notification
+
+
 v3.0.8
 ------
 

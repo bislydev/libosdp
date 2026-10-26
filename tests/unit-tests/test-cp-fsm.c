@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2019-2026 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -10,6 +10,97 @@
 #include "test.h"
 
 extern int (*test_state_update)(struct osdp_pd *);
+extern int (*test_cp_phy_state_update)(struct osdp_pd *);
+
+struct retry_capture {
+	uint8_t packet[OSDP_PACKET_BUF_SIZE];
+	int length;
+	int sends;
+	bool identical;
+};
+
+static int capture_retry(void *data, uint8_t *buf, int len)
+{
+	struct retry_capture *capture = data;
+
+	if (len <= 0 || len > (int)sizeof(capture->packet)) {
+		return -1;
+	}
+	if (capture->sends == 0) {
+		memcpy(capture->packet, buf, len);
+		capture->length = len;
+	} else if (len != capture->length || memcmp(capture->packet, buf, len)) {
+		capture->identical = false;
+	}
+	capture->sends++;
+	return len;
+}
+
+static int no_reply(void *data, uint8_t *buf, int len)
+{
+	ARG_UNUSED(data);
+	ARG_UNUSED(buf);
+	ARG_UNUSED(len);
+	return 0;
+}
+
+void run_retry_recovery_tests(struct test *t)
+{
+	struct retry_capture capture = { 0 };
+	osdp_pd_info_t info = {
+		.address = 1,
+		.baud_rate = 38400,
+		.channel.data = &capture,
+		.channel.send = capture_retry,
+		.channel.recv = no_reply,
+	};
+	struct osdp *ctx = (struct osdp *)osdp_cp_setup(1, &info);
+	bool retries_ok = true, jitter_ok = true;
+
+	if (!ctx) {
+		TEST_REPORT(t, false);
+		return;
+	}
+	SET_CURRENT_PD(ctx, 0);
+	struct osdp_pd *pd = GET_CURRENT_PD(ctx);
+	/* Include sequence wrap and repeated offline/recovery cycles. */
+	for (int cycle = 0; cycle < 32; cycle++) {
+		capture = (struct retry_capture) { .identical = true };
+		osdp_phy_state_reset(pd, true);
+		pd->state = OSDP_CP_STATE_ONLINE;
+		pd->seq_number = cycle % 4;
+		pd->cmd_id = CMD_POLL;
+		pd->phy_state = OSDP_CP_PHY_STATE_SEND_CMD;
+		test_cp_phy_state_update(pd);
+		for (int retry = 0; retry < OSDP_CMD_MAX_RETRIES; retry++) {
+			pd->phy_tstamp = osdp_millis_now() - OSDP_RESP_TOUT_MS - 1;
+			test_cp_phy_state_update(pd);
+			retries_ok &= pd->phy_state == OSDP_CP_PHY_STATE_WAIT;
+			pd->phy_tstamp = osdp_millis_now() - OSDP_CMD_RETRY_WAIT_MS;
+			test_cp_phy_state_update(pd);
+		}
+		pd->phy_tstamp = osdp_millis_now() - OSDP_RESP_TOUT_MS - 1;
+		test_cp_phy_state_update(pd);
+		retries_ok &= pd->phy_state == OSDP_CP_PHY_STATE_ERR &&
+			capture.sends == 1 + OSDP_CMD_MAX_RETRIES && capture.identical;
+		test_state_update(pd);
+		jitter_ok &= pd->state == OSDP_CP_STATE_OFFLINE &&
+			pd->wait_ms >= OSDP_ONLINE_RETRY_WAIT_MAX_MS - 900 &&
+			pd->wait_ms <= OSDP_ONLINE_RETRY_WAIT_MAX_MS &&
+			(OSDP_ONLINE_RETRY_WAIT_MAX_MS - pd->wait_ms) % 100 == 0;
+		pd->tstamp = osdp_millis_now() - pd->wait_ms + 100;
+		test_state_update(pd);
+		jitter_ok &= pd->state == OSDP_CP_STATE_OFFLINE;
+		pd->tstamp = osdp_millis_now() - pd->wait_ms - 1;
+		test_state_update(pd);
+		jitter_ok &= pd->state == OSDP_CP_STATE_INIT;
+	}
+	printf(SUB_1 "Bounded byte-identical retries: %s\n", retries_ok ? "OK" : "FAIL");
+	TEST_REPORT(t, retries_ok);
+	printf(SUB_1 "Offline jitter and recovery: %s\n", jitter_ok ? "OK" : "FAIL");
+	TEST_REPORT(t, jitter_ok);
+	osdp_cp_teardown(ctx);
+}
 
 int test_fsm_resp = 0;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2019-2026 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -26,7 +26,6 @@
 
 #ifndef CONFIG_NO_GENERATED_HEADERS
 #include "osdp_config.h" /* generated */
-#include "osdp_export.h" /* generated */
 #endif
 
 #ifndef NULL
@@ -63,46 +62,6 @@ do {\
 #define BYTE_1(x) (uint8_t)(((x) >> 8) & 0xFF)
 #define BYTE_2(x) (uint8_t)(((x) >> 16) & 0xFF)
 #define BYTE_3(x) (uint8_t)(((x) >> 24) & 0xFF)
-
-/**
- * Shorthands for unsigned type (u8, u16, u24, u32) to little indian bytes and
- * vice-versa.
- *
- * Note: Use with caution. These are simple macros that are intended to improve
- * code maintainability by moving repeated patterns into one place. They do not
- * consider side effects.
- */
-#define U8_TO_BYTES_LE(val, buf, len) \
-	buf[len++] = BYTE_0(val)
-#define U16_TO_BYTES_LE(val, buf, len) \
-	buf[len++] = BYTE_0(val); \
-	buf[len++] = BYTE_1(val);
-#define U24_TO_BYTES_LE(val, buf, len) \
-	buf[len++] = BYTE_0(val); \
-	buf[len++] = BYTE_1(val); \
-	buf[len++] = BYTE_2(val);
-#define U32_TO_BYTES_LE(val, buf, len) \
-	buf[len++] = BYTE_0(val); \
-	buf[len++] = BYTE_1(val); \
-	buf[len++] = BYTE_2(val); \
-	buf[len++] = BYTE_3(val);
-#define BYTES_TO_U8_LE(buf, len, val) \
-	val = buf[len++];
-#define BYTES_TO_U16_LE(buf, len, val) \
-	val = ((buf[len + 1] << 8) | \
-	       (buf[len + 0] << 0)); \
-	len += 2;
-#define BYTES_TO_U24_LE(buf, len, val) \
-	val = ((buf[len + 2] << 16) | \
-	       (buf[len + 1] << 8) | \
-	       (buf[len + 0] << 0)); \
-	len += 3;
-#define BYTES_TO_U32_LE(buf, len, val) \
-	val = ((buf[len + 3] << 24) | \
-	       (buf[len + 2] << 16) | \
-	       (buf[len + 1] << 8) | \
-	       (buf[len + 0] << 0)); \
-	len += 4;
 
 /* casting helpers */
 #define TO_OSDP(ctx)  ((struct osdp *)ctx)
@@ -271,14 +230,24 @@ union osdp_ephemeral_data {
 #define PD_FLAG_CHN_SHARED     BIT(9)  /* PD's channel is shared */
 #define PD_FLAG_PKT_SKIP_MARK  BIT(10) /* OPT_OSDP_SKIP_MARK_BYTE */
 #define PD_FLAG_PKT_HAS_MARK   BIT(11) /* Packet has mark byte */
-#define PD_FLAG_HAS_SCBK       BIT(12) /* PD has a dedicated SCBK */
-#define PD_FLAG_SC_DISABLED    BIT(13) /* master_key=NULL && scbk=NULL */
-#define PD_FLAG_PKT_BROADCAST  BIT(14) /* this packet was addressed to 0x7F */
+#define PD_FLAG_SC_DISABLED    BIT(12) /* master_key=NULL && scbk=NULL */
+#define PD_FLAG_PKT_BROADCAST  BIT(13) /* this packet was addressed to 0x7F */
+#define PD_FLAG_CP_USE_CRC     BIT(14) /* CP uses CRC-16 instead of checksum */
+
+/* PD Init flags */
+#define PD_FLAG_ENFORCE_SECURE  BIT(24) /* See: OSDP_FLAG_ENFORCE_SECURE */
+#define PD_FLAG_INSTALL_MODE    BIT(25) /* See: OSDP_FLAG_INSTALL_MODE */
+#define PD_FLAG_IGNORE_USR      BIT(26) /* See: OSDP_FLAG_IGNORE_USR */
+#define PD_FLAG_ENABLE_NOTIF    BIT(27) /* See: OSDP_FLAG_ENABLE_NOTIFICATION */
+#define PD_FLAG_CAPTURE_PKT     BIT(28) /* See: OSDP_FLAG_CAPTURE_PACKETS */
+#define PD_FLAG_ALLOW_EMPTY_EDB BIT(29) /* See: OSDP_FLAG_ALLOW_EMPTY_ENCRYPTED_DATA_BLOCK */
 
 /* CP event requests; used with make_request() and check_request() */
 #define CP_REQ_RESTART_SC              0x00000001
 #define CP_REQ_EVENT_SEND              0x00000002
 #define CP_REQ_OFFLINE                 0x00000004
+#define CP_REQ_DISABLE                 0x00000008
+#define CP_REQ_ENABLE                  0x00000010
 
 enum osdp_cp_phy_state_e {
 	OSDP_CP_PHY_STATE_IDLE,
@@ -298,6 +267,7 @@ enum osdp_cp_state_e {
 	OSDP_CP_STATE_ONLINE,
 	OSDP_CP_STATE_PROBE,
 	OSDP_CP_STATE_OFFLINE,
+	OSDP_CP_STATE_DISABLED,
 	OSDP_CP_STATE_SENTINEL
 };
 
@@ -365,19 +335,25 @@ struct osdp_secure_channel {
 };
 
 struct osdp_rb {
-    size_t head;
-    size_t tail;
-    uint8_t buffer[OSDP_RX_RB_SIZE];
+	size_t head;
+	size_t tail;
+	uint8_t buffer[OSDP_RX_RB_SIZE];
+};
+
+struct osdp_rx_pkt {
+	const uint8_t *buf;
+	unsigned long len;
+	unsigned long max_len;
 };
 
 #define OSDP_APP_DATA_QUEUE_SIZE \
-	(OSDP_CP_CMD_POOL_SIZE * \
-	 (sizeof(union osdp_ephemeral_data) + sizeof(queue_node_t)))
+	(OSDP_CP_CMD_POOL_SIZE * sizeof(union osdp_ephemeral_data))
 
 struct osdp_app_data_pool {
 	slab_t slab;
 	uint8_t slab_blob[OSDP_APP_DATA_QUEUE_SIZE];
 };
+
 
 struct osdp_pd {
 	char name[OSDP_PD_NAME_MAXLEN];
@@ -396,6 +372,7 @@ struct osdp_pd {
 	int state;             /* FSM state (CP mode only) */
 	int phy_state;         /* phy layer FSM state (CP mode only) */
 	int phy_retry_count;   /* command retry counter */
+	int phy_tx_seq;        /* seq number embedded in last TX packet */
 	uint32_t wait_ms;      /* wait time in MS to retry communication */
 	int64_t tstamp;        /* Last POLL command issued time in ticks */
 	int64_t sc_tstamp;     /* Last received secure reply time in ticks */
@@ -405,8 +382,13 @@ struct osdp_pd {
 	uint16_t peer_rx_size; /* Receive buffer size of the peer PD/CP */
 
 	/* Raw bytes received from the serial line for this PD */
-	struct osdp_rb rx_rb;
-	uint8_t packet_buf[OSDP_PACKET_BUF_SIZE];
+	union {
+		struct osdp_rb *rb;
+		struct osdp_rx_pkt *pkt;
+	} rx;
+
+	uint8_t *packet_buf;
+	uint8_t packet_buf_store[OSDP_PACKET_BUF_SIZE];
 	unsigned long packet_len;
 	unsigned long packet_buf_len;
 	uint32_t packet_scan_skip;
@@ -421,7 +403,11 @@ struct osdp_pd {
 		queue_t cmd_queue;
 		queue_t event_queue;
 	};
-	struct osdp_app_data_pool app_data; /* alloc osdp_event / osdp_cmd */
+	const struct osdp_cmd *active_cmd;      /* in-flight cmd (app-owned mode) */
+	const struct osdp_event *active_event;  /* in-flight event (app-owned mode) */
+#ifndef OPT_OSDP_APP_OWNED_QUEUE_DATA
+	struct osdp_app_data_pool app_data;  /* alloc osdp_event / osdp_cmd */
+#endif
 
 	struct osdp_channel channel;     /* PD's serial channel */
 	struct osdp_secure_channel sc;   /* Secure Channel session context */
@@ -430,6 +416,8 @@ struct osdp_pd {
 	/* PD command callback to app with opaque arg pointer as passed by app */
 	void *command_callback_arg;
 	pd_command_callback_t command_callback;
+	void *event_completion_callback_arg;
+	pd_event_completion_callback_t event_completion_callback;
 
 	/* logger context (from utils/logger.h) */
 	logger_t logger;
@@ -449,11 +437,13 @@ struct osdp {
 	/* CP event callback to app with opaque arg pointer as passed by app */
 	void *event_callback_arg;
 	cp_event_callback_t event_callback;
+	void *command_completion_callback_arg;
+	cp_command_completion_callback_t command_completion_callback;
 };
 
 void osdp_keyset_complete(struct osdp_pd *pd);
 
-/* from osdp_phy.c */
+/* --- from osdp_phy.c --- */
 int osdp_phy_packet_init(struct osdp_pd *p, uint8_t *buf, int max_len);
 int osdp_phy_check_packet(struct osdp_pd *pd);
 int osdp_phy_decode_packet(struct osdp_pd *p, uint8_t **pkt_start);
@@ -461,9 +451,11 @@ void osdp_phy_state_reset(struct osdp_pd *pd, bool is_error);
 int osdp_phy_packet_get_data_offset(struct osdp_pd *p, const uint8_t *buf);
 uint8_t *osdp_phy_packet_get_smb(struct osdp_pd *p, const uint8_t *buf);
 int osdp_phy_send_packet(struct osdp_pd *pd, uint8_t *buf,
-			 int len, int max_len);
+                         int len, int max_len);
+void osdp_phy_progress_sequence(struct osdp_pd *pd);
+void osdp_phy_release_packet(struct osdp_pd *pd);
 
-/* from osdp_common.c */
+/* --- from osdp_common.c --- */
 __weak int64_t osdp_millis_now(void);
 int64_t osdp_millis_since(int64_t last);
 uint16_t osdp_compute_crc16(const uint8_t *buf, size_t len);
@@ -475,6 +467,7 @@ int osdp_rb_push(struct osdp_rb *p, uint8_t data);
 int osdp_rb_push_buf(struct osdp_rb *p, uint8_t *buf, int len);
 int osdp_rb_pop(struct osdp_rb *p, uint8_t *data);
 int osdp_rb_pop_buf(struct osdp_rb *p, uint8_t *buf, int max_len);
+void osdp_rb_reset(struct osdp_rb *p);
 
 void osdp_crypt_setup();
 void osdp_encrypt(uint8_t *key, uint8_t *iv, uint8_t *data, int len);
@@ -482,7 +475,7 @@ void osdp_decrypt(uint8_t *key, uint8_t *iv, uint8_t *data, int len);
 void osdp_fill_random(uint8_t *buf, int len);
 void osdp_crypt_teardown();
 
-/* from osdp_sc.c */
+/* --- from osdp_sc.c --- */
 void osdp_compute_scbk(struct osdp_pd *pd, uint8_t *master_key, uint8_t *scbk);
 void osdp_compute_session_keys(struct osdp_pd *pd);
 void osdp_compute_cp_cryptogram(struct osdp_pd *pd);
@@ -497,9 +490,114 @@ int osdp_compute_mac(struct osdp_pd *pd, int is_cmd,
 void osdp_sc_setup(struct osdp_pd *pd);
 void osdp_sc_teardown(struct osdp_pd *pd);
 
+/* --- Little-endian readers --- */
+
+static inline uint16_t bread_u16_le(const uint8_t *buf, int *pos)
+{
+    uint32_t v = buf[(*pos)++];
+    v |= (uint32_t)buf[(*pos)++] << 8;
+    return (uint16_t)v;
+}
+
+static inline uint32_t bread_u24_le(const uint8_t *buf, int *pos)
+{
+    uint32_t v = buf[(*pos)++];
+    v |= (uint32_t)buf[(*pos)++] << 8;
+    v |= (uint32_t)buf[(*pos)++] << 16;
+    return v;
+}
+
+static inline uint32_t bread_u32_le(const uint8_t *buf, int *pos)
+{
+    uint32_t v = buf[(*pos)++];
+    v |= (uint32_t)buf[(*pos)++] << 8;
+    v |= (uint32_t)buf[(*pos)++] << 16;
+    v |= (uint32_t)buf[(*pos)++] << 24;
+    return v;
+}
+
+/* --- Little-endian writers --- */
+
+static inline void bwrite_u8(uint8_t val, uint8_t *buf, int *len)
+{
+    buf[(*len)++] = val;
+}
+
+static inline void bwrite_u16_le(uint16_t val, uint8_t *buf, int *len)
+{
+    buf[(*len)++] = BYTE_0(val);
+    buf[(*len)++] = BYTE_1(val);
+}
+
+static inline void bwrite_u24_le(uint32_t val, uint8_t *buf, int *len)
+{
+    buf[(*len)++] = BYTE_0(val);
+    buf[(*len)++] = BYTE_1(val);
+    buf[(*len)++] = BYTE_2(val);
+}
+
+static inline void bwrite_u32_le(uint32_t val, uint8_t *buf, int *len)
+{
+    buf[(*len)++] = BYTE_0(val);
+    buf[(*len)++] = BYTE_1(val);
+    buf[(*len)++] = BYTE_2(val);
+    buf[(*len)++] = BYTE_3(val);
+}
+
+/* --- Big-endian readers --- */
+
+static inline uint16_t bread_u16_be(const uint8_t *buf, int *pos)
+{
+    uint32_t v = (uint32_t)buf[(*pos)++] << 8;
+    v |= buf[(*pos)++];
+    return (uint16_t)v;
+}
+
+static inline uint32_t bread_u24_be(const uint8_t *buf, int *pos)
+{
+    uint32_t v = (uint32_t)buf[(*pos)++] << 16;
+    v |= (uint32_t)buf[(*pos)++] << 8;
+    v |= buf[(*pos)++];
+    return v;
+}
+
+static inline uint32_t bread_u32_be(const uint8_t *buf, int *pos)
+{
+    uint32_t v = (uint32_t)buf[(*pos)++] << 24;
+    v |= (uint32_t)buf[(*pos)++] << 16;
+    v |= (uint32_t)buf[(*pos)++] << 8;
+    v |= buf[(*pos)++];
+    return v;
+}
+
+/* --- Big-endian writers --- */
+
+static inline void bwrite_u16_be(uint16_t val, uint8_t *buf, int *len)
+{
+    buf[(*len)++] = BYTE_1(val);
+    buf[(*len)++] = BYTE_0(val);
+}
+
+static inline void bwrite_u24_be(uint32_t val, uint8_t *buf, int *len)
+{
+    buf[(*len)++] = BYTE_2(val);
+    buf[(*len)++] = BYTE_1(val);
+    buf[(*len)++] = BYTE_0(val);
+}
+
+static inline void bwrite_u32_be(uint32_t val, uint8_t *buf, int *len)
+{
+    buf[(*len)++] = BYTE_3(val);
+    buf[(*len)++] = BYTE_2(val);
+    buf[(*len)++] = BYTE_1(val);
+    buf[(*len)++] = BYTE_0(val);
+}
+
+/* --- Other Helpers --- */
+
 static inline int get_tx_buf_size(struct osdp_pd *pd)
 {
-	int packet_buf_size = sizeof(pd->packet_buf);
+	int packet_buf_size = OSDP_PACKET_BUF_SIZE;
 
 	if (pd->peer_rx_size) {
 		if (packet_buf_size > (int)pd->peer_rx_size)
@@ -528,9 +626,12 @@ static inline bool is_cp_mode(struct osdp_pd *pd)
 	return !ISSET_FLAG(pd, PD_FLAG_PD_MODE);
 }
 
-static inline bool is_enforce_secure(struct osdp_pd *pd)
-{
-	return ISSET_FLAG(pd, OSDP_FLAG_ENFORCE_SECURE);
+static inline bool is_channel_shared(struct osdp_pd *pd) {
+	return ISSET_FLAG(pd, PD_FLAG_CHN_SHARED);
+}
+
+static inline bool sc_use_scbkd(struct osdp_pd *pd) {
+	return ISSET_FLAG(pd, PD_FLAG_SC_USE_SCBKD);
 }
 
 static inline bool sc_is_capable(struct osdp_pd *pd)
@@ -574,23 +675,40 @@ static inline bool test_request(struct osdp_pd *pd, uint32_t req) {
 }
 
 static inline bool is_capture_enabled(struct osdp_pd *pd) {
-	return (ISSET_FLAG(pd, OSDP_FLAG_CAPTURE_PACKETS) &&
+	return (ISSET_FLAG(pd, PD_FLAG_CAPTURE_PKT) &&
 	        (IS_ENABLED(OPT_OSDP_PACKET_TRACE) ||
 	         IS_ENABLED(OPT_OSDP_DATA_TRACE)));
 }
 
 static inline bool is_data_trace_enabled(struct osdp_pd *pd) {
-	return (ISSET_FLAG(pd, OSDP_FLAG_CAPTURE_PACKETS) &&
+	return (ISSET_FLAG(pd, PD_FLAG_CAPTURE_PKT) &&
 	        IS_ENABLED(OPT_OSDP_DATA_TRACE));
 }
 
 static inline bool is_packet_trace_enabled(struct osdp_pd *pd) {
-	return (ISSET_FLAG(pd, OSDP_FLAG_CAPTURE_PACKETS) &&
+	return (ISSET_FLAG(pd, PD_FLAG_CAPTURE_PKT) &&
 	        IS_ENABLED(OPT_OSDP_PACKET_TRACE));
 }
 
 static inline bool sc_allow_empty_encrypted_data_block(struct osdp_pd *pd) {
-	return ISSET_FLAG(pd, OSDP_FLAG_ALLOW_EMPTY_ENCRYPTED_DATA_BLOCK);
+	return ISSET_FLAG(pd, PD_FLAG_ALLOW_EMPTY_EDB);
+}
+
+static inline bool is_enforce_secure(struct osdp_pd *pd)
+{
+	return ISSET_FLAG(pd, PD_FLAG_ENFORCE_SECURE);
+}
+
+static inline bool is_notifications_enabled(struct osdp_pd *pd) {
+	return ISSET_FLAG(pd, PD_FLAG_ENABLE_NOTIF);
+}
+
+static inline bool is_ignore_unsolicited_messages(struct osdp_pd *pd) {
+	return ISSET_FLAG(pd, PD_FLAG_IGNORE_USR);
+}
+
+static inline bool is_install_mode(struct osdp_pd *pd) {
+	return ISSET_FLAG(pd, PD_FLAG_INSTALL_MODE);
 }
 
 #endif	/* _OSDP_COMMON_H_ */
