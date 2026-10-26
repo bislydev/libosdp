@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2020-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+#  Copyright (c) 2020-2026 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
 #
 #  SPDX-License-Identifier: Apache-2.0
 #
@@ -9,23 +9,31 @@ if (NOT OPT_BUILD_STATIC AND NOT OPT_BUILD_SHARED)
 endif()
 
 if (OPT_OSDP_PACKET_TRACE)
-	list(APPEND LIB_OSDP_DEFINITIONS "-DOPT_OSDP_PACKET_TRACE")
+	list(APPEND LIB_OSDP_DEFINITIONS "-DOPT_OSDP_PACKET_TRACE=1")
 endif()
 
 if (OPT_OSDP_DATA_TRACE)
-	list(APPEND LIB_OSDP_DEFINITIONS "-DOPT_OSDP_DATA_TRACE")
+	list(APPEND LIB_OSDP_DEFINITIONS "-DOPT_OSDP_DATA_TRACE=1")
 endif()
 
 if (OPT_OSDP_SKIP_MARK_BYTE)
-	list(APPEND LIB_OSDP_DEFINITIONS "-DOPT_OSDP_SKIP_MARK_BYTE")
+	list(APPEND LIB_OSDP_DEFINITIONS "-DOPT_OSDP_SKIP_MARK_BYTE=1")
+endif()
+
+if (OPT_OSDP_RX_ZERO_COPY)
+	list(APPEND LIB_OSDP_DEFINITIONS "-DOPT_OSDP_RX_ZERO_COPY=1")
+endif()
+
+if (OPT_OSDP_APP_OWNED_QUEUE_DATA)
+	list(APPEND LIB_OSDP_DEFINITIONS "-DOPT_OSDP_APP_OWNED_QUEUE_DATA=1")
 endif()
 
 if (OPT_DISABLE_PRETTY_LOGGING)
-	list(APPEND LIB_OSDP_DEFINITIONS "-DOPT_DISABLE_PRETTY_LOGGING")
+	list(APPEND LIB_OSDP_DEFINITIONS "-DOPT_DISABLE_PRETTY_LOGGING=1")
 endif()
 
 if (OPT_OSDP_STATIC_PD)
-	list(APPEND LIB_OSDP_DEFINITIONS "-DOPT_OSDP_STATIC_PD")
+	list(APPEND LIB_OSDP_DEFINITIONS "-DOPT_OSDP_STATIC_PD=1")
 endif()
 
 # optionally, find and use OpenSSL or MbedTLS
@@ -94,16 +102,21 @@ list(APPEND LIB_OSDP_UTILS_SRC
 	${PROJECT_SOURCE_DIR}/utils/src/utils.c
 	${PROJECT_SOURCE_DIR}/utils/src/list.c
 	${PROJECT_SOURCE_DIR}/utils/src/queue.c
-	${PROJECT_SOURCE_DIR}/utils/src/slab.c
 	${PROJECT_SOURCE_DIR}/utils/src/disjoint_set.c
 	${PROJECT_SOURCE_DIR}/utils/src/logger.c
 	${PROJECT_SOURCE_DIR}/utils/src/crc16.c
 )
 
+if (NOT OPT_OSDP_APP_OWNED_QUEUE_DATA)
+	list(APPEND LIB_OSDP_UTILS_SRC
+		${PROJECT_SOURCE_DIR}/utils/src/slab.c
+	)
+endif()
+
 list(APPEND LIB_OSDP_HEADERS
 	${PROJECT_SOURCE_DIR}/include/osdp.h
 	${PROJECT_SOURCE_DIR}/include/osdp.hpp
-	${PROJECT_BINARY_DIR}/include/osdp_export.h
+	${PROJECT_SOURCE_DIR}/include/osdp_export.h
 )
 
 # These variables are used in other parts of this projects for rebuilding
@@ -133,6 +146,9 @@ set_target_properties(${LIB_OSDP_STATIC} PROPERTIES
 	VERSION ${PROJECT_VERSION}
 	COMPILE_FLAGS -DOSDP_STATIC_DEFINE
 	PUBLIC_HEADER "${LIB_OSDP_HEADERS}"
+	C_VISIBILITY_PRESET hidden
+	CXX_VISIBILITY_PRESET hidden
+	VISIBILITY_INLINES_HIDDEN YES
 )
 
 target_include_directories(${LIB_OSDP_STATIC}
@@ -199,6 +215,9 @@ set_target_properties(${LIB_OSDP_SHARED} PROPERTIES
 	VERSION ${PROJECT_VERSION}
 	SOVERSION ${PROJECT_VERSION_MAJOR}
 	PUBLIC_HEADER "${LIB_OSDP_HEADERS}"
+	C_VISIBILITY_PRESET hidden
+	CXX_VISIBILITY_PRESET hidden
+	VISIBILITY_INLINES_HIDDEN YES
 )
 
 target_include_directories(${LIB_OSDP_SHARED}
@@ -236,14 +255,7 @@ install(
 
 endif() # OPT_BUILD_SHARED
 
-# generate and install osdp_export.h for OSDP_EXPORT macro
-include(GenerateExportHeader)
-generate_export_header(${LIB_TARGET}
-	BASE_NAME osdp
-	EXPORT_FILE_NAME ${PROJECT_BINARY_DIR}/include/osdp_export.h
-)
-
-install(FILES ${PROJECT_BINARY_DIR}/include/osdp_export.h
+install(FILES ${PROJECT_SOURCE_DIR}/include/osdp_export.h
 	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libosdp
 	COMPONENT headers
 )
