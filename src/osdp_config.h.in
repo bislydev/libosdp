@@ -28,6 +28,8 @@
  */
 
 /* Protocol Timings */
+/* Bisly: use two native retries within roughly 600 ms, then recover the
+ * peripheral after 8 seconds (with the CP offline jitter). */
 #ifndef OSDP_PD_SC_RETRY_MS
 #define OSDP_PD_SC_RETRY_MS                     (600 * 1000u)
 #endif
@@ -49,16 +51,16 @@
 #endif
 
 #ifndef OSDP_CMD_RETRY_WAIT_MS
-#define OSDP_CMD_RETRY_WAIT_MS                  (800)
+#define OSDP_CMD_RETRY_WAIT_MS                  (0)
 #endif
 
 #ifndef OSDP_ONLINE_RETRY_WAIT_MAX_MS
-#define OSDP_ONLINE_RETRY_WAIT_MAX_MS           (300 * 1000u)
+#define OSDP_ONLINE_RETRY_WAIT_MAX_MS           (8 * 1000u)
 #endif
 
 /* Protocol Limits */
 #ifndef OSDP_CMD_MAX_RETRIES
-#define OSDP_CMD_MAX_RETRIES                    (8)
+#define OSDP_CMD_MAX_RETRIES                    (2)
 #endif
 
 #ifndef OSDP_FILE_ERROR_RETRY_MAX
