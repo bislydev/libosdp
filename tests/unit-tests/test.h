@@ -75,5 +75,6 @@ void run_command_tests(struct test *t);
 void run_event_tests(struct test *t);
 void run_hotplug_tests(struct test *t);
 void run_async_fuzz_tests(struct test *t);
+void run_retry_recovery_tests(struct test *t);
 
 #endif

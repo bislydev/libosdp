@@ -383,6 +383,7 @@ int main(int argc, char *argv[])
 	run_hotplug_tests(&t);
 
 	run_async_fuzz_tests(&t);
+	run_retry_recovery_tests(&t);
 
 	rc = test_end(&t);
 

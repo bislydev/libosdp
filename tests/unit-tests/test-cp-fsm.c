@@ -44,7 +44,7 @@ static int no_reply(void *data, uint8_t *buf, int len)
 	return 0;
 }
 
-static void run_retry_recovery_tests(struct test *t)
+void run_retry_recovery_tests(struct test *t)
 {
 	struct retry_capture capture = { 0 };
 	osdp_pd_info_t info = {
@@ -233,7 +233,6 @@ void run_cp_fsm_tests(struct test *t)
 	TEST_REPORT(t, result);
 
 	test_cp_fsm_teardown(t);
-	run_retry_recovery_tests(t);
 }
 
 // unnecessary
