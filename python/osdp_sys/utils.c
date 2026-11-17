@@ -1,10 +1,43 @@
 /*
- * Copyright (c) 2020-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2020-2026 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <stdarg.h>
 #include "module.h"
+
+#if PY_VERSION_HEX < 0x030C0000
+/*
+ * PyErr_GetRaisedException() / PyErr_SetRaisedException() were added in
+ * Python 3.12. Back-fill them with the legacy fetch/restore API (matching
+ * reference-stealing semantics) so this file compiles on 3.8 - 3.11.
+ */
+static PyObject *PyErr_GetRaisedException(void)
+{
+	PyObject *type, *value, *tb;
+
+	PyErr_Fetch(&type, &value, &tb);	/* clears the error indicator */
+	if (type == NULL)
+		return NULL;			/* no active exception */
+	PyErr_NormalizeException(&type, &value, &tb);
+	if (tb != NULL) {
+		PyException_SetTraceback(value, tb);
+		Py_DECREF(tb);
+	}
+	Py_DECREF(type);
+	return value;				/* strong ref (normalized instance) */
+}
+
+static void PyErr_SetRaisedException(PyObject *exc)
+{
+	PyObject *type = (PyObject *)Py_TYPE(exc);
+	PyObject *tb = PyException_GetTraceback(exc);	/* new ref or NULL */
+
+	Py_INCREF(type);
+	PyErr_Restore(type, exc, tb);		/* steals type, exc, tb */
+}
+#endif
 
 int pyosdp_dict_add_bool(PyObject *dict, const char *key, bool val)
 {
@@ -101,6 +134,7 @@ int pyosdp_parse_bool(PyObject *obj, bool *res)
 	return 0;
 }
 
+/* NOTE: Caller must free the returned string with free() */
 int pyosdp_parse_str(PyObject *obj, char **str)
 {
 	char *s;
@@ -119,6 +153,11 @@ int pyosdp_parse_str(PyObject *obj, char **str)
 		return -1;
 	}
 	*str = strdup(s);
+	if (*str == NULL) {
+		PyErr_SetString(PyExc_MemoryError, "String allocation failed");
+		Py_DECREF(str_ref);
+		return -1;
+	}
 	Py_DECREF(str_ref);
 	return 0;
 }
@@ -283,10 +322,14 @@ static int channel_write_callback(void *data, uint8_t *buf, int len)
 		return -1;
 
 	PyObject *result = PyObject_CallMethod(channel, "write", "O", byte_array);
-	if (!result || !PyLong_Check(result))
+	if (!result || !PyLong_Check(result)) {
+		Py_DECREF(byte_array);
+		Py_XDECREF(result);
 		return -1;
+	}
 
 	len = (int)PyLong_AsLong(result);
+	Py_DECREF(byte_array);
 	Py_DECREF(result);
 	return len;
 }
@@ -294,9 +337,63 @@ static int channel_write_callback(void *data, uint8_t *buf, int len)
 static void channel_flush_callback(void *data)
 {
 	PyObject *channel = data;
+	PyObject *result;
 
-	PyObject_CallMethod(channel, "flush", NULL);
+	result = PyObject_CallMethod(channel, "flush", NULL);
+	Py_XDECREF(result);
 }
+
+#ifdef OPT_OSDP_RX_ZERO_COPY
+static int channel_read_packet_callback(void *data, const uint8_t **buf, int *max_len)
+{
+	Py_ssize_t len;
+	PyObject *channel = data;
+	PyObject *result;
+	static uint8_t *packet_buf = NULL;
+
+	result = PyObject_CallMethod(channel, "read_packet", NULL);
+
+	/* No packet ready */
+	if (result == Py_None || result == NULL) {
+		Py_XDECREF(result);
+		return -1;
+	}
+
+	if (!PyBytes_Check(result)) {
+		Py_DECREF(result);
+		return -1;
+	}
+
+	/* Store the Python bytes object in channel data for later release */
+	PyArg_Parse(result, "y#", &packet_buf, &len);
+
+	/* Keep the result alive until release_packet is called */
+	PyObject_SetAttrString(channel, "_current_packet", result);
+
+	*buf = packet_buf;
+	*max_len = (int)len;
+
+	return 0;
+}
+
+static void channel_release_packet_callback(void *data, const uint8_t *buf)
+{
+	PyObject *channel = data;
+	PyObject *result, *packet_obj;
+
+	ARG_UNUSED(buf);
+
+	/* Release the stored packet object */
+	packet_obj = PyObject_GetAttrString(channel, "_current_packet");
+	if (packet_obj && packet_obj != Py_None) {
+		Py_DECREF(packet_obj);
+		PyObject_SetAttrString(channel, "_current_packet", Py_None);
+	}
+
+	result = PyObject_CallMethod(channel, "release_packet", "O", Py_None);
+	Py_XDECREF(result);
+}
+#endif
 
 void pyosdp_get_channel(PyObject *channel, struct osdp_channel *ops)
 {
@@ -304,14 +401,62 @@ void pyosdp_get_channel(PyObject *channel, struct osdp_channel *ops)
 	PyObject *id_obj;
 
 	id_obj = PyObject_GetAttrString(channel, "id");
-	if (id_obj && PyLong_Check(id_obj)) {
-		id = (int)PyLong_AsLong(id_obj);
+	if (id_obj) {
+		if (PyLong_Check(id_obj)) {
+			id = (int)PyLong_AsLong(id_obj);
+		}
+		Py_DECREF(id_obj);
+	} else {
+		/* "id" is optional on the channel object; GetAttrString raises
+		 * AttributeError when it's absent. Clear it so the exception
+		 * doesn't linger and get flagged as "ignored" by the next
+		 * unrelated C-API call (seen under CPython 3.13+).
+		 */
+		PyErr_Clear();
 	}
 
 	ops->id = id;
-	ops->recv = channel_read_callback;
 	ops->send = channel_write_callback;
 	ops->flush = channel_flush_callback;
 	ops->data = channel;
+
+#ifdef OPT_OSDP_RX_ZERO_COPY
+	/* Check if channel has read_packet method */
+	if (PyObject_HasAttrString(channel, "read_packet")) {
+		ops->recv = NULL;
+		ops->recv_pkt = channel_read_packet_callback;
+		ops->release_pkt = channel_release_packet_callback;
+	} else {
+		ops->recv = channel_read_callback;
+		ops->recv_pkt = NULL;
+		ops->release_pkt = NULL;
+	}
+#else
+	ops->recv = channel_read_callback;
+#endif
+
 	Py_INCREF(channel);
+}
+
+void pyosdp_add_error_context(PyObject *exc_type, const char *format, ...)
+{
+	PyObject *cause_exc, *new_exc;
+	va_list args;
+	char message[512];
+
+	va_start(args, format);
+	vsnprintf(message, sizeof(message), format, args);
+	va_end(args);
+
+	cause_exc = PyErr_GetRaisedException();
+	if (cause_exc != NULL) {
+		PyErr_SetString(exc_type, message);
+		new_exc = PyErr_GetRaisedException();
+		if (new_exc != NULL) {
+			PyException_SetCause(new_exc, cause_exc);
+			PyErr_SetRaisedException(new_exc);
+		}
+	} else {
+		PyErr_SetString(exc_type, message);
+	}
 }

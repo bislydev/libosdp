@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2019-2026 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -43,7 +43,8 @@ osdp_pd_info_t pd_info[] = {
 			.id = 0,
 			.recv = sample_cp_recv_func,
 			.send = sample_cp_send_func,
-			.flush = nullptr
+			.flush = nullptr,
+			.close = nullptr,
 		},
 		.scbk = nullptr,
 	}

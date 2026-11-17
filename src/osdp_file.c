@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2021-2026 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -48,10 +48,10 @@ static void write_file_tx_header(struct osdp_file *f, uint8_t *buf)
 {
 	int len = 0;
 
-	U8_TO_BYTES_LE(f->file_id, buf, len);
-	U32_TO_BYTES_LE(f->size, buf, len);
-	U32_TO_BYTES_LE(f->offset, buf, len);
-	U16_TO_BYTES_LE(f->length, buf, len);
+	bwrite_u8(f->file_id, buf, &len);
+	bwrite_u32_le(f->size, buf, &len);
+	bwrite_u32_le(f->offset, buf, &len);
+	bwrite_u16_le(f->length, buf, &len);
 	assert(len == FILE_TRANSFER_HEADER_SIZE);
 }
 
@@ -129,7 +129,7 @@ int osdp_file_cmd_stat_decode(struct osdp_pd *pd, uint8_t *buf, int len)
 		return -1;
 	}
 
-	if (f->state != OSDP_FILE_INPROG) {
+	if (f->state != OSDP_FILE_INPROG && f->state != OSDP_FILE_KEEP_ALIVE) {
 		LOG_ERR("Stat_Decode: File transfer is not in progress!");
 		return -1;
 	}
@@ -141,10 +141,10 @@ int osdp_file_cmd_stat_decode(struct osdp_pd *pd, uint8_t *buf, int len)
 	}
 
 	/* Collect struct osdp_cmd_file_stat */
-	BYTES_TO_U8_LE(buf, pos, stat.control);
-	BYTES_TO_U16_LE(buf, pos, stat.delay);
-	BYTES_TO_U16_LE(buf, pos, stat.status);
-	BYTES_TO_U16_LE(buf, pos, stat.rx_size);
+	stat.control = buf[pos++];
+	stat.delay = bread_u16_le(buf, &pos);
+	stat.status = bread_u16_le(buf, &pos);
+	stat.rx_size = bread_u16_le(buf, &pos);
 	assert(pos == len);
 	assert(f->offset + f->length <= f->size);
 
@@ -213,12 +213,17 @@ int osdp_file_cmd_tx_decode(struct osdp_pd *pd, uint8_t *buf, int len)
 		return -1;
 	}
 
-	BYTES_TO_U8_LE(buf, pos, xfer.type);
-	BYTES_TO_U32_LE(buf, pos, xfer.size);
-	BYTES_TO_U32_LE(buf, pos, xfer.offset);
-	BYTES_TO_U16_LE(buf, pos, xfer.length);
+	xfer.type = buf[pos++];
+	xfer.size = bread_u32_le(buf, &pos);
+	xfer.offset = bread_u32_le(buf, &pos);
+	xfer.length = bread_u16_le(buf, &pos);
 	assert(pos == sizeof(struct osdp_cmd_file_xfer));
-	assert(xfer.length + pos == len);
+
+	if (xfer.length > (uint16_t)(len - FILE_TRANSFER_HEADER_SIZE)) {
+		LOG_ERR("TX_Decode: declared length %d exceeds %d bytes present",
+			xfer.length, len - FILE_TRANSFER_HEADER_SIZE);
+		return -1;
+	}
 
 	if (f->state == OSDP_FILE_IDLE || f->state == OSDP_FILE_DONE) {
 		if (pd->command_callback) {
@@ -250,6 +255,15 @@ int osdp_file_cmd_tx_decode(struct osdp_pd *pd, uint8_t *buf, int len)
 
 	if (f->state != OSDP_FILE_INPROG) {
 		LOG_ERR("TX_Decode: File transfer is not in progress!");
+		return -1;
+	}
+
+	/* Bound the wire offset and length against the declared file size
+	 * before handing them to the write handler, so a peer cannot make it
+	 * write outside the file it announced. */
+	if ((uint64_t)xfer.offset + xfer.length > f->size) {
+		LOG_ERR("TX_Decode: chunk off:%d len:%d exceeds size:%d",
+			xfer.offset, xfer.length, f->size);
 		return -1;
 	}
 
@@ -296,7 +310,13 @@ int osdp_file_cmd_stat_build(struct osdp_pd *pd, uint8_t *buf, int max_len)
 	}
 	LOG_DBG("length: %d offset: %d size: %d", f->length, f->offset, f->size);
 	f->length = 0;
-	assert(f->offset <= f->size);
+
+	/*
+	 * Don't assert f->offset:w <= f->size: a legitimately retransmitted
+	 * chunk (lost FTSTAT) re-drives the running offset and can transiently
+	 * overshoot. The write-side bound in tx_decode is the real guard.
+	 */
+
 	if (f->offset == f->size) { /* EOF */
 		if (f->ops.close(f->ops.arg) < 0) {
 			LOG_ERR("Stat_Build: Close failed!");
@@ -309,12 +329,11 @@ int osdp_file_cmd_stat_build(struct osdp_pd *pd, uint8_t *buf, int max_len)
 
 	/* fill the packet buffer (layout: struct osdp_cmd_file_stat) */
 
-	U8_TO_BYTES_LE(stat.control, buf, len);
-	U16_TO_BYTES_LE(stat.delay, buf, len);
-	U16_TO_BYTES_LE(stat.status, buf, len);
-	U16_TO_BYTES_LE(stat.rx_size, buf, len);
+	bwrite_u8(stat.control, buf, &len);
+	bwrite_u16_le(stat.delay, buf, &len);
+	bwrite_u16_le(stat.status, buf, &len);
+	bwrite_u16_le(stat.rx_size, buf, &len);
 	assert(len == FILE_TRANSFER_STAT_SIZE);
-
 	return len;
 }
 

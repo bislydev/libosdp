@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-#  Copyright (c) 2020-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+#  Copyright (c) 2020-2026 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
 #
 #  SPDX-License-Identifier: Apache-2.0
 #
@@ -47,7 +47,7 @@ led_cmd = {
     'command': Command.LED,
     'reader': 1,
     'led_number': 0,
-    'control_code': 1,
+    'control_code': 2, # temporary: set this state and start the timer
     'on_count': 10,
     'off_count': 10,
     'on_color': CommandLEDColor.Red,

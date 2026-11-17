@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2021-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+#  Copyright (c) 2021-2026 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
 #
 #  SPDX-License-Identifier: Apache-2.0
 #
@@ -16,16 +16,22 @@ from .constants import LogLevel
 class PeripheralDevice():
     def __init__(self, pd_info: PDInfo, pd_cap: PDCapabilities,
                  log_level: LogLevel=LogLevel.Info,
-                 command_handler: Callable[[dict], Tuple[int, dict]]=None):
+                 command_handler: Callable[[dict], Tuple[int, dict]]=None,
+                 event_completion_handler: Callable[[dict, int], None]=None):
         self.command_queue = queue.Queue()
         self.address = pd_info.address
+        self.user_command_handler = None
+        self.user_event_completion_handler = None
         osdp_sys.set_loglevel(log_level)
         self.ctx = osdp_sys.PeripheralDevice(pd_info.get(), capabilities=pd_cap.get())
-        if command_handler:
-            self.ctx.set_command_callback(command_handler)
-        else:
-            self.ctx.set_command_callback(self.command_handler)
+        # Always use our internal handler to ensure queue functionality
+        self.ctx.set_command_callback(self._internal_command_handler)
+        if hasattr(self.ctx, "set_event_completion_callback"):
+            self.ctx.set_event_completion_callback(
+                self._internal_event_completion_handler
+            )
         self.set_command_handler(command_handler)
+        self.set_event_completion_handler(event_completion_handler)
         self.event = None
         self.lock = None
         self.thread = None
@@ -33,20 +39,38 @@ class PeripheralDevice():
     @staticmethod
     def refresh(event, lock, ctx):
         while not event.is_set():
-            lock.acquire()
-            ctx.refresh()
-            lock.release()
+            with lock:
+                ctx.refresh()
             time.sleep(0.020) #sleep for 20ms
 
-    def command_handler(self, command) -> Tuple[int, dict]:
+    def _internal_command_handler(self, command) -> Tuple[int, dict]:
+        """Internal handler that manages both queue and user callback"""
+        # Always put command in queue for get_command() compatibility
         self.command_queue.put(command)
+
+        # If user has set a custom handler, call it too
+        if self.user_command_handler:
+            try:
+                return self.user_command_handler(command)
+            except Exception as e:
+                print(f"Error in user command handler: {e}")
+                return -1, None
+
         return 0, None
 
     def set_command_handler(self, handler: Callable[[dict], Tuple[int, dict]]):
-        if handler:
-            self.ctx.set_command_callback(handler)
-        else:
-            self.ctx.set_command_callback(self.command_handler)
+        """Set user command handler while maintaining queue functionality"""
+        self.user_command_handler = handler
+
+    def set_event_completion_handler(self, handler: Callable[[dict, int], None]):
+        self.user_event_completion_handler = handler
+
+    def _internal_event_completion_handler(self, event, status) -> None:
+        if self.user_event_completion_handler:
+            try:
+                self.user_event_completion_handler(event, status)
+            except Exception as e:
+                print(f"Error in user event completion handler: {e}")
 
     def get_command(self, timeout: int=5):
         block = timeout >= 0
@@ -57,10 +81,8 @@ class PeripheralDevice():
         return cmd
 
     def submit_event(self, event):
-        self.lock.acquire()
-        ret = self.ctx.submit_event(event)
-        self.lock.release()
-        return ret
+        with self.lock:
+            return self.ctx.submit_event(event)
 
     def notify_event(self, event):
         from warnings import warn
@@ -68,10 +90,8 @@ class PeripheralDevice():
         return self.submit_event(event)
 
     def register_file_ops(self, fops):
-        self.lock.acquire()
-        ret = self.ctx.register_file_ops(0, fops)
-        self.lock.release()
-        return ret
+        with self.lock:
+            return self.ctx.register_file_ops(0, fops)
 
     def is_sc_active(self):
         return self.ctx.is_sc_active()
@@ -100,10 +120,8 @@ class PeripheralDevice():
         self.thread.start()
 
     def get_file_tx_status(self):
-        self.lock.acquire()
-        ret = self.ctx.get_file_tx_status(0)
-        self.lock.release()
-        return ret
+        with self.lock:
+            return self.ctx.get_file_tx_status(0)
 
     def stop(self):
         if not self.thread:

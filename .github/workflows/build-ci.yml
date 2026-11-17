@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+# Copyright (c) 2020-2026 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -42,21 +42,20 @@ jobs:
     - name: make
       run: make V=1
 
-  DocBuild:
+  DoxygenCheck:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Install dependencies
+    - name: Install Doxygen
       run: |
         sudo apt update
         sudo apt install -y doxygen
-        pip3 install -r doc/requirements.txt
     - name: Configure
       run: cmake -DCMAKE_BUILD_TYPE=Debug .
-    - name: Build docs
-      run: cmake --build . --parallel 7 --target html_docs
+    - name: Generate Doxygen XML
+      run: cmake --build . --parallel 7 --target doxygen_xml
 
   Test:
     runs-on: ubuntu-latest

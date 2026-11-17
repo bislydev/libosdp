@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2024 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
+ * Copyright (c) 2019-2026 Siddharth Chandrasekaran <sidcha.dev@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -14,7 +14,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <osdp_export.h>
+#include "osdp_export.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -270,6 +270,18 @@ struct osdp_pd_id {
 typedef int (*osdp_read_fn_t)(void *data, uint8_t *buf, int maxlen);
 
 /**
+ * @brief Pointer to function used to receive a full packet buffer.
+ * The callee returns a pointer and a max_len up to which LibOSDP may
+ * access the buffer. The caller must invoke release_pkt() when done.
+ *
+ * @param data for use by underlying layers. osdp_channel::data is passed
+ * @param buf output pointer to the packet buffer
+ * @param max_len output maximum length LibOSDP may touch in this buffer
+ * @return 0 when a complete packet is available; non-zero otherwise
+ */
+typedef int (*osdp_read_pkt_fn_t)(void *data, const uint8_t **buf, int *max_len);
+
+/**
  * @brief pointer to function that sends byte array into some channel. This
  * function should be non-blocking.
  *
@@ -305,6 +317,14 @@ typedef void (*osdp_flush_fn_t)(void *data);
 typedef void (*osdp_close_fn_t)(void *data);
 
 /**
+ * @brief Pointer to function used to release a buffer returned by recv_pkt().
+ *
+ * @param data for use by underlying layers. osdp_channel::data is passed
+ * @param buf pointer that was returned by recv_pkt()
+ */
+typedef void (*osdp_release_pkt_fn_t)(void *data, const uint8_t *buf);
+
+/**
  * @brief User defined communication channel abstraction for OSDP devices.
  * The methods for read/write/flush are expected to be non-blocking.
  */
@@ -326,6 +346,10 @@ struct osdp_channel {
 	 */
 	osdp_read_fn_t recv;
 	/**
+	 * Pointer to function used to receive a full packet buffer (optional)
+	 */
+	osdp_read_pkt_fn_t recv_pkt;
+	/**
 	 * Pointer to function used to send osdp packet data
 	 */
 	osdp_write_fn_t send;
@@ -333,6 +357,10 @@ struct osdp_channel {
 	 * Pointer to function used to flush the channel (optional)
 	 */
 	osdp_flush_fn_t flush;
+	/**
+	 * Pointer to function used to release recv_pkt() data (optional)
+	 */
+	osdp_release_pkt_fn_t release_pkt;
 	/**
 	 * Pointer to function used to close the channel (optional)
 	 */
@@ -670,17 +698,13 @@ struct osdp_cmd_mfg {
 	 */
 	uint32_t vendor_code;
 	/**
-	 * 1-byte manufacturer defined osdp command
-	 */
-	uint8_t command;
-	/**
-	 * length Length of command data (optional)
-	 */
-	uint8_t length;
-	/**
-	 * Command data (optional)
+	 * Command data
 	 */
 	uint8_t data[OSDP_CMD_MFG_MAX_DATALEN];
+	/**
+	 * Length of the data (internal use)
+	 */
+	uint8_t length;
 };
 
 /**
@@ -736,10 +760,22 @@ enum osdp_cmd_e {
 #define OSDP_CMD_FLAG_BROADCAST 0x000000001
 
 /**
+ * @brief Queue linkage node; layout-compatible with node_t from list.h.
+ * Embedded as @c _node in osdp_cmd and osdp_event. Do not read or write this
+ * field — it is reserved for internal use by the library.
+ */
+typedef struct osdp_queue_node_s osdp_queue_node_t;
+struct osdp_queue_node_s {
+	osdp_queue_node_t *next;
+	osdp_queue_node_t *prev;
+};
+
+/**
  * @brief OSDP Command Structure. This is a wrapper for all individual OSDP
  * commands.
  */
 struct osdp_cmd {
+	osdp_queue_node_t _node; /**< Reserved: internal queue linkage */
 	enum osdp_cmd_e id;    /**< Command ID. Used to select specific commands in union */
 	uint32_t flags;        /**< Flags; see OSDP_CMD_FLAG_* flags for possibilities */
 	/** Command */
@@ -838,10 +874,6 @@ struct osdp_event_mfgrep {
 	 */
 	uint32_t vendor_code;
 	/**
-	 * 1-byte reply code
-	 */
-	uint8_t command;
-	/**
 	 * Length of manufacturer data in bytes (optional)
 	 */
 	uint8_t length;
@@ -910,6 +942,7 @@ enum osdp_event_type {
  * @brief OSDP Event structure.
  */
 struct osdp_event {
+	osdp_queue_node_t _node; /**< Reserved: internal queue linkage */
 	enum osdp_event_type type;  /**< Event type. Used to select specific event in union */
 	uint32_t flags;             /**< Flags; reserved, set to zero */
 	/** Event */
@@ -954,6 +987,30 @@ typedef int (*pd_command_callback_t)(void *arg, struct osdp_cmd *cmd);
  * @retval -ve on errors.
  */
 typedef int (*cp_event_callback_t)(void *arg, int pd, struct osdp_event *ev);
+
+/**
+ * @brief Terminal status of a submitted command/event object.
+ */
+enum osdp_completion_status {
+	OSDP_COMPLETION_OK = 0,  /**< Successfully completed */
+	OSDP_COMPLETION_FAILED,  /**< Transport/protocol failure */
+	OSDP_COMPLETION_FLUSHED, /**< Removed by flush API */
+	OSDP_COMPLETION_ABORTED, /**< Removed during teardown */
+};
+
+/**
+ * @brief Callback for CP command completion notifications.
+ */
+typedef void (*cp_command_completion_callback_t)(void *arg, int pd,
+						 const struct osdp_cmd *cmd,
+						 enum osdp_completion_status status);
+
+/**
+ * @brief Callback for PD event completion notifications.
+ */
+typedef void (*pd_event_completion_callback_t)(void *arg,
+					       const struct osdp_event *ev,
+					       enum osdp_completion_status status);
 
 /* ------------------------------- */
 /*            PD Methods           */
@@ -1012,6 +1069,20 @@ OSDP_EXPORT
 void osdp_pd_set_command_callback(osdp_t *ctx, pd_command_callback_t cb,
 				  void *arg);
 
+#ifdef OPT_OSDP_APP_OWNED_QUEUE_DATA
+/**
+ * @brief Set callback method for PD event completion.
+ *
+ * @param ctx OSDP context
+ * @param cb Callback function pointer
+ * @param arg Opaque pointer passed as first callback argument
+ */
+OSDP_EXPORT
+void osdp_pd_set_event_completion_callback(osdp_t *ctx,
+					   pd_event_completion_callback_t cb,
+					   void *arg);
+#endif
+
 /**
  * @brief API to notify PD events to CP. These events are sent to the CP as an
  * alternate response to a POLL command.
@@ -1022,9 +1093,8 @@ void osdp_pd_set_command_callback(osdp_t *ctx, pd_command_callback_t cb,
  * @retval 0 on success
  * @retval -1 on failure
  */
-OSDP_EXPORT
-int osdp_pd_notify_event(osdp_t *ctx, const struct osdp_event *event)
-	__attribute__((deprecated("Use osdp_pd_submit_event() instead!")));
+OSDP_DEPRECATED_EXPORT("Use osdp_pd_submit_event() instead!")
+int osdp_pd_notify_event(osdp_t *ctx, const struct osdp_event *event);
 
 /**
  * @brief Submit PD events to CP. These events are delivered to the CP as a
@@ -1071,6 +1141,7 @@ osdp_t *osdp_cp_setup(int num_pd, const osdp_pd_info_t *info);
 /**
  * @brief Adds more PD devices in the CP control list.
  *
+ * @param ctx OSDP context
  * @param num_pd Number of PDs connected to this CP. The `osdp_pd_info_t *` is
  * treated as an array of length num_pd.
  * @param info Pointer to info struct populated by application.
@@ -1113,9 +1184,8 @@ void osdp_cp_teardown(osdp_t *ctx);
  * @note This method only adds the command on to a particular PD's command
  * queue. The command itself can fail due to various reasons.
  */
-OSDP_EXPORT
-int osdp_cp_send_command(osdp_t *ctx, int pd, const struct osdp_cmd *cmd)
-	__attribute__((deprecated("Use osdp_cp_submit_command() instead!")));
+OSDP_DEPRECATED_EXPORT("Use osdp_cp_submit_command() instead!")
+int osdp_cp_send_command(osdp_t *ctx, int pd, const struct osdp_cmd *cmd);
 
 /**
  * @brief Submit CP commands to PD. These commands are queued to be sent to the
@@ -1192,6 +1262,20 @@ int osdp_cp_get_capability(const osdp_t *ctx, int pd, struct osdp_pd_cap *cap);
 OSDP_EXPORT
 void osdp_cp_set_event_callback(osdp_t *ctx, cp_event_callback_t cb, void *arg);
 
+#ifdef OPT_OSDP_APP_OWNED_QUEUE_DATA
+/**
+ * @brief Set callback method for CP command completion.
+ *
+ * @param ctx OSDP context
+ * @param cb Callback function pointer
+ * @param arg Opaque pointer passed as first callback argument
+ */
+OSDP_EXPORT
+void osdp_cp_set_command_completion_callback(osdp_t *ctx,
+					     cp_command_completion_callback_t cb,
+					     void *arg);
+#endif
+
 /**
  * @brief Set or clear OSDP public flags
  *
@@ -1210,6 +1294,47 @@ void osdp_cp_set_event_callback(osdp_t *ctx, cp_event_callback_t cb, void *arg);
  */
 OSDP_EXPORT
 int osdp_cp_modify_flag(osdp_t *ctx, int pd, uint32_t flags, bool do_set);
+
+/**
+ * @brief Disable a PD managed by the CP. Disabled PDs are brought to a safe
+ * state and will not process commands or generate events.
+ *
+ * @param ctx OSDP context
+ * @param pd PD offset (0-indexed) of this PD in `osdp_pd_info_t *` passed to
+ * osdp_cp_setup()
+ *
+ * @retval 0 on success
+ * @retval -1 on failure
+ */
+OSDP_EXPORT
+int osdp_cp_disable_pd(osdp_t *ctx, int pd);
+
+/**
+ * @brief Enable a previously disabled PD. The PD will start up as it would
+ * during initial setup.
+ *
+ * @param ctx OSDP context
+ * @param pd PD offset (0-indexed) of this PD in `osdp_pd_info_t *` passed to
+ * osdp_cp_setup()
+ *
+ * @retval 0 on success
+ * @retval -1 on failure
+ */
+OSDP_EXPORT
+int osdp_cp_enable_pd(osdp_t *ctx, int pd);
+
+/**
+ * @brief Check if a PD is currently enabled.
+ *
+ * @param ctx OSDP context
+ * @param pd PD offset (0-indexed) of this PD in `osdp_pd_info_t *` passed to
+ * osdp_cp_setup()
+ *
+ * @retval true if PD is enabled
+ * @retval false if PD is disabled or on error
+ */
+OSDP_EXPORT
+bool osdp_cp_is_pd_enabled(const osdp_t *ctx, int pd);
 
 /* ------------------------------- */
 /*          Common Methods         */
